@@ -31164,6 +31164,15 @@ async function installMacOSClient(version) {
   }
 }
 
+async function installWindowsClient(version) {
+  if (version) {
+    await exec.exec(`choco install -y warp --no-progress --version=${version}`);
+  } else {
+    await exec.exec("choco install -y --no-progress warp");
+  }
+  core.addPath("C:\\Program Files\\Cloudflare\\Cloudflare WARP\\");
+}
+
 async function writeLinuxConfiguration(
   organization,
   auth_client_id,
@@ -31217,6 +31226,25 @@ async function writeMacOSConfiguration(
   );
 }
 
+async function writeWindowsConfiguration(
+  organization,
+  auth_client_id,
+  auth_client_secret,
+) {
+  const config = `
+<dict>
+    <key>organization</key>
+    <string>${organization}</string>
+    <key>auth_client_id</key>
+    <string>${auth_client_id}</string>
+    <key>auth_client_secret</key>
+    <string>${auth_client_secret}</string>
+</dict>`;
+  if (!external_fs_.existsSync("C:\\ProgramData\\Cloudflare"))
+    external_fs_.mkdirSync("C:\\ProgramData\\Cloudflare");
+  external_fs_.writeFileSync("C:\\ProgramData\\Cloudflare\\mdm.xml", config);
+}
+
 async function checkWARPRegistration(organization, is_registered) {
   let output = "";
   const options = {};
@@ -31258,9 +31286,11 @@ async function checkWARPConnected() {
 }
 
 async function run() {
-  if (!["linux", "darwin"].includes(process.platform)) {
+  if (!["linux", "darwin", "win32"].includes(process.platform)) {
     throw new Error(
-      "Only Linux and macOS are supported. Pull requests for other platforms are welcome.",
+      "Only Windows, Linux and macOS are supported. Pull requests for other platforms are welcome. (Platform is " +
+        process.platform +
+        ")",
     );
   }
 
@@ -31288,6 +31318,14 @@ async function run() {
       );
       await installMacOSClient(version);
       break;
+    case "win32":
+      await writeWindowsConfiguration(
+        organization,
+        auth_client_id,
+        auth_client_secret,
+      );
+      await installWindowsClient(version);
+      break;
   }
 
   await (0,backoff.backOff)(
@@ -31308,6 +31346,9 @@ async function cleanup() {
       await exec.exec(
         'sudo rm "/Library/Managed Preferences/com.cloudflare.warp.plist"',
       );
+      break;
+    case "win32":
+      await exec.exec("rm C:\\ProgramData\\Cloudflare\\mdm.xml");
       break;
   }
 
